@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureVault - File Sharing Platform</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="#6366f1"/>
+                <path d="M16 8L24 14V24H8V14L16 8Z" stroke="white" stroke-width="2" fill="none"/>
+                <circle cx="16" cy="17" r="3" fill="white"/>
+            </svg>
+            <span>SecureVault</span>
+        </div>
+        <div class="nav-links">
+            <button class="nav-btn active" data-tab="share">Share File</button>
+            <button class="nav-btn" data-tab="vault">Personal Vault</button>
+            <button class="nav-btn" data-tab="download">Download</button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container">
+
+        <!-- Share File Tab -->
+        <section id="share-tab" class="tab-content active">
+            <div class="hero">
+                <h1>Share Files Securely</h1>
+                <p>Upload files and get a secure shareable link. Set download limits and expiry.</p>
+            </div>
+
+            <div class="card upload-card">
+                <div class="upload-area" id="upload-dropzone">
+                    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                        <path d="M32 12V44M32 12L20 24M32 12L44 24" stroke="#6366f1" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M16 36H12C8.686 36 6 38.686 6 42V50C6 53.314 8.686 56 12 56H52C55.314 56 58 53.314 58 50V42C58 38.686 55.314 36 52 36H48" stroke="#6366f1" stroke-width="3" stroke-linecap="round"/>
+                    </svg>
+                    <h3>Drag & drop your file here</h3>
+                    <p>or <span class="link">browse</span> to select</p>
+                    <input type="file" id="file-input" hidden>
+                    <div class="file-info" id="file-info"></div>
+                </div>
+
+                <div class="upload-options">
+                    <div class="form-group">
+                        <label>Max Downloads (optional)</label>
+                        <input type="number" id="max-downloads" min="1" placeholder="Unlimited">
+                    </div>
+                    <div class="form-group">
+                        <label>Expires At (optional)</label>
+                        <input type="datetime-local" id="expires-at">
+                    </div>
+                </div>
+
+                <button class="btn btn-primary btn-full" id="upload-btn" disabled>
+                    <span class="btn-text">Upload & Get Link</span>
+                    <span class="spinner hidden"></span>
+                </button>
+            </div>
+
+            <div class="card result-card hidden" id="share-result">
+                <div class="success-icon">&#10003;</div>
+                <h3>File Uploaded Successfully!</h3>
+                <div class="link-box">
+                    <input type="text" id="share-link" readonly>
+                    <button class="btn btn-secondary" id="copy-link-btn">Copy</button>
+                </div>
+                <div class="file-details" id="upload-details"></div>
+            </div>
+        </section>
+
+                <!-- Vault Tab -->
+        <section id="vault-tab" class="tab-content">
+            <div class="hero">
+                <h1>Personal Vault</h1>
+                <p>Create password-protected vaults to store and share your personal files.</p>
+            </div>
+
+            <div class="vault-actions">
+                <button class="btn btn-primary" id="create-vault-btn">Create New Vault</button>
+                <button class="btn btn-secondary" id="open-vault-btn">Open Existing Vault</button>
+            </div>
+
+            <!-- Create Vault Form -->
+            <div class="card hidden" id="create-vault-form">
+                <h3>Create Personal Vault</h3>
+                <div class="form-group">
+                    <label>Vault Name</label>
+                    <input type="text" id="vault-name" placeholder="My Documents">
+                </div>
+                <div class="form-group">
+                    <label>Password (min 6 chars)</label>
+                    <input type="password" id="vault-password" placeholder="Enter strong password">
+                </div>
+                <div class="form-group">
+                    <label>Description (optional)</label>
+                    <textarea id="vault-desc" rows="2" placeholder="What's in this vault?"></textarea>
+                </div>
+                <button class="btn btn-primary btn-full" id="create-vault-submit">
+                    <span class="btn-text">Create Vault</span>
+                    <span class="spinner hidden"></span>
+                </button>
+            </div>
+
+            <!-- Open Vault Form -->
+            <div class="card hidden" id="open-vault-form">
+                <h3>Open Vault</h3>
+                <p class="form-hint">Paste the vault share link OR the vault token below, then enter the password.</p>
+                <div class="form-group">
+                    <label>Vault Link or Token</label>
+                    <input type="text" id="vault-token-input" placeholder="http://localhost:3000/vault/abc123... OR just abc123...">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="vault-password-input" placeholder="Enter vault password">
+                </div>
+                <button class="btn btn-primary btn-full" id="open-vault-submit">
+                    <span class="btn-text">Unlock Vault</span>
+                    <span class="spinner hidden"></span>
+                </button>
+            </div>
+
+            <!-- Vault Content -->
+            <div class="card hidden" id="vault-content">
+                <div class="vault-header">
+                    <h3 id="vault-title">Vault Name</h3>
+                    <p id="vault-desc-display"></p>
+                    <div class="vault-meta">
+                        <span id="vault-created"></span>
+                        <span id="vault-file-count"></span>
+                    </div>
+                </div>
+
+                <div class="vault-upload">
+                    <div class="upload-area small" id="vault-dropzone">
+                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <path d="M16 6V20M16 6L10 12M16 6L22 12" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/>
+                            <path d="M8 16H6C4.343 16 3 17.343 3 19V24C3 25.657 4.343 27 6 27H26C27.657 27 29 25.657 29 24V19C29 17.343 27.657 16 26 16H24" stroke="#6366f1" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <p>Drop files here to upload to vault</p>
+                        <input type="file" id="vault-file-input" hidden>
+                    </div>
+                </div>
+
+                <div class="file-list" id="vault-file-list">
+                    <p class="empty-state">No files in this vault yet. Upload files above.</p>
+                </div>
+
+                <div class="vault-footer">
+                    <div class="share-box">
+                        <label>Share this vault (send this link to others):</label>
+                        <div class="link-box">
+                            <input type="text" id="vault-share-link" readonly>
+                            <button class="btn btn-secondary" id="copy-vault-link">Copy</button>
+                        </div>
+                    </div>
+                    <div class="token-box">
+                        <label>Vault Token (raw ID):</label>
+                        <div class="link-box">
+                            <input type="text" id="vault-raw-token" readonly>
+                            <button class="btn btn-secondary" id="copy-vault-token">Copy</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" id="delete-vault-btn">Delete Vault</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Download Tab -->
+        <section id="download-tab" class="tab-content">
+            <div class="hero">
+                <h1>Download File</h1>
+                <p>Enter a share link or token to download a file.</p>
+            </div>
+
+            <div class="card">
+                <div class="form-group">
+                    <label>Share Link or Token</label>
+                    <input type="text" id="download-token" placeholder="Paste share link here">
+                </div>
+                <button class="btn btn-primary btn-full" id="check-file-btn">
+                    <span class="btn-text">Check & Download</span>
+                    <span class="spinner hidden"></span>
+                </button>
+            </div>
+
+            <div class="card hidden" id="download-preview">
+                <div class="file-preview">
+                    <div class="file-icon large">&#128196;</div>
+                    <div class="file-info-preview">
+                        <h3 id="preview-name">filename.pdf</h3>
+                        <p id="preview-size">2.5 MB</p>
+                        <p id="preview-meta"></p>
+                    </div>
+                </div>
+                <a class="btn btn-primary btn-full" id="download-link" href="#" download>Download Now</a>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Modal for confirmation -->
+    <div class="modal-overlay hidden" id="modal-overlay">
+        <div class="modal">
+            <h3 id="modal-title">Confirm</h3>
+            <p id="modal-message">Are you sure?</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+                <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

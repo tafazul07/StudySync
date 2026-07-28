@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF RAG System</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; min-height: 100vh; }
+    .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+    h1 { color: #60a5fa; margin-bottom: 0.5rem; font-size: 2rem; }
+    .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+    .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #334155; }
+    .card h3 { color: #60a5fa; margin-bottom: 1rem; font-size: 1.1rem; }
+    .upload-area { border: 2px dashed #475569; border-radius: 8px; padding: 2.5rem; text-align: center; transition: all 0.2s; cursor: pointer; }
+    .upload-area:hover { border-color: #60a5fa; background: #1e293b; }
+    .upload-area.dragover { border-color: #60a5fa; background: #1e293b; }
+    input[type="file"] { display: none; }
+    .btn { background: #2563eb; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; font-size: 1rem; transition: all 0.2s; font-weight: 500; }
+    .btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+    .btn:disabled { background: #475569; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: #475569; }
+    .btn-secondary:hover { background: #334155; }
+    textarea { width: 100%; padding: 0.75rem; border: 1px solid #334155; border-radius: 6px; font-family: inherit; font-size: 1rem; resize: vertical; background: #0f172a; color: #e2e8f0; }
+    textarea:focus { outline: none; border-color: #60a5fa; }
+    .question-box { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .answer { background: #0f172a; padding: 1rem; border-radius: 6px; margin-top: 1rem; white-space: pre-wrap; border-left: 3px solid #60a5fa; }
+    .sources { margin-top: 1rem; }
+    .source { background: #0f172a; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.875rem; border-left: 3px solid #34d399; }
+    .source-header { display: flex; justify-content: space-between; color: #34d399; font-weight: 600; margin-bottom: 0.25rem; }
+    .stats { display: flex; gap: 1.5rem; color: #94a3b8; font-size: 0.875rem; }
+    .stat-item { display: flex; align-items: center; gap: 0.3rem; }
+    .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #334155; border-top-color: #60a5fa; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: #f87171; background: #450a0a; padding: 0.75rem; border-radius: 6px; margin-top: 0.5rem; border: 1px solid #7f1d1d; }
+    .success { color: #34d399; background: #064e3b; padding: 0.75rem; border-radius: 6px; margin-top: 0.5rem; border: 1px solid #065f46; }
+    .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .badge-blue { background: #1e3a8a; color: #60a5fa; }
+    .badge-green { background: #064e3b; color: #34d399; }
+    .badge-gray { background: #334155; color: #94a3b8; }
+    .model-info { margin-top: 0.5rem; font-size: 0.875rem; color: #64748b; }
+    .hidden { display: none; }
+    .file-info { color: #94a3b8; margin-top: 0.5rem; font-size: 0.875rem; }
+    .web-results { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #334155; }
+    .web-result { background: #0f172a; padding: 0.75rem; border-radius: 6px; margin-bottom: 0.75rem; border-left: 3px solid #8b5cf6; }
+    .web-result-title { font-weight: 600; color: #8b5cf6; margin-bottom: 0.25rem; }
+    .web-result-url { font-size: 0.75rem; color: #64748b; margin-bottom: 0.25rem; }
+    .web-result-snippet { font-size: 0.875rem; color: #cbd5e1; }
+    .web-result-title a { color: #8b5cf6; text-decoration: none; }
+    .web-result-title a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📄 PDF RAG System</h1>
+    <p class="subtitle">Upload PDFs and ask questions using AI-powered retrieval</p>
+    <div id="apiStatus" style="color:#94a3b8; margin-bottom:1rem; font-size:0.9rem;"></div>
+
+    <div class="card">
+      <h3>📤 Upload PDF Document</h3>
+      <div class="upload-area" id="uploadArea" onclick="document.getElementById('pdfInput').click()">
+        <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">📎 Click to select or drag PDF here</p>
+        <p style="color: #64748b; font-size: 0.875rem;">Supports PDF files up to 50MB</p>
+        <input type="file" id="pdfInput" accept=".pdf" onchange="uploadPDF()">
+      </div>
+      <div id="uploadStatus"></div>
+    </div>
+
+    <div class="card">
+      <h3>❓ Ask a Question</h3>
+      <textarea id="question" rows="3" placeholder="What would you like to know about your documents? (e.g., 'What are the main conclusions?' or 'Summarize the methodology')"></textarea>
+      <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+        <input type="checkbox" id="webSearchToggle" style="cursor: pointer;">
+        <label for="webSearchToggle" style="cursor: pointer; color: #94a3b8; font-size: 0.875rem;">Also search the web for additional context</label>
+      </div>
+      <div class="question-box">
+        <button class="btn" onclick="askQuestion()" id="askBtn">🔍 Ask Question</button>
+        <button class="btn btn-secondary" onclick="clearAll()">🗑️ Clear All Docs</button>
+      </div>
+      <div id="answerBox"></div>
+    </div>
+
+    <div class="card">
+      <h3>📊 System Status</h3>
+      <div class="stats" id="stats">
+        <div class="stat-item">📚 <span id="docCount">0</span> documents</div>
+        <div class="stat-item">🧩 <span id="chunkCount">0</span> chunks indexed</div>
+        <div class="stat-item">⚡ <span id="modelName">Loading...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = window.API_URL || ((window.location.protocol === 'file:' || window.location.port === '5500') ? 'http://localhost:8000' : window.location.origin);
+    const apiStatus = document.getElementById('apiStatus');
+    if (apiStatus) {
+      apiStatus.textContent = `Backend API: ${API_URL}`;
+    }
+
+    // Drag and drop support
+    const uploadArea = document.getElementById('uploadArea');
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', (e) => { 
+      e.preventDefault(); 
+      uploadArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        document.getElementById('pdfInput').files = files;
+        uploadPDF();
+      }
+    });
+
+    async function uploadPDF() {
+      const input = document.getElementById('pdfInput');
+      const status = document.getElementById('uploadStatus');
+      if (!input.files[0]) return;
+
+      const formData = new FormData();
+      formData.append('file', input.files[0]);
+
+      status.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;"><div class="loading"></div><span>Processing PDF and generating embeddings...</span></div>';
+
+      try {
+        const res = await fetch(`${API_URL}/api/pdf/upload`, { method: 'POST', body: formData });
+        const text = await res.text();
+        if (!text.trim()) {
+          throw new Error(`Server returned empty response (${res.status})`);
+        }
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          throw new Error(`Invalid response from server: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
+        }
+
+        if (data.success) {
+          status.innerHTML = `<div class="success">
+            <strong>✅ Uploaded Successfully</strong><br>
+            <span class="file-info">${data.filename} • ${data.pages} pages • ${data.total_chunks} chunks indexed</span>
+          </div>`;
+          loadStats();
+        } else {
+          const message = data.error || data.detail || 'Upload failed';
+          status.innerHTML = `<div class="error">❌ ${message}</div>`;
+        }
+      } catch (err) {
+        status.innerHTML = `<div class="error">❌ ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function askQuestion() {
+      const question = document.getElementById('question').value.trim();
+      const btn = document.getElementById('askBtn');
+      const box = document.getElementById('answerBox');
+      const webSearchEnabled = document.getElementById('webSearchToggle').checked;
+
+      if (!question) {
+        box.innerHTML = '<div class="error">Please enter a question first</div>';
+        return;
+      }
+
+      btn.disabled = true;
+      box.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;padding:1rem;"><div class="loading"></div><span>Retrieving relevant chunks and generating answer...</span></div>';
+
+      try {
+        const res = await fetch(`${API_URL}/api/query/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, top_k: 5 })
+        });
+        const text = await res.text();
+        if (!text.trim()) {
+          throw new Error(`Server returned empty response (${res.status})`);
+        }
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          throw new Error(`Invalid response from server: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
+        }
+
+        let html = '';
+        if (data.success) {
+          html = `<div class="answer"><strong style="color:#60a5fa;">Answer:</strong>
+${escapeHtml(data.answer)}</div>`;
+
+          if (data.cached) {
+            html += `<div style="margin-top:0.5rem;"><span class="badge badge-green">⚡ Cached</span></div>`;
+          }
+
+          html += `<div class="model-info">Model: <span class="badge badge-blue">${escapeHtml(data.model_used || 'Unknown')}</span></div>`;
+
+          html += '<div class="sources"><strong style="color:#60a5fa;">Top Sources:</strong>';
+          data.sources.forEach((s, i) => {
+            html += `<div class="source">
+              <div class="source-header"><span>Chunk ${i+1}</span><span>${(s.relevance * 100).toFixed(1)}% match</span></div>
+              ${escapeHtml(s.content)}
+            </div>`;
+          });
+          html += '</div>';
+        } else {
+          html = `<div class="error">❌ ${data.error || 'Query failed'}</div>`;
+        }
+
+        // Fetch web search results if enabled
+        if (webSearchEnabled && data.success) {
+          try {
+            const webRes = await fetch(`${API_URL}/api/search/web?query=${encodeURIComponent(question)}&limit=5`);
+            const webText = await webRes.text();
+            if (webText.trim()) {
+              const webData = JSON.parse(webText);
+              if (webData.success && webData.results.length > 0) {
+                html += '<div class="web-results"><strong style="color:#8b5cf6;">🌐 Web Search Results:</strong>';
+                webData.results.forEach((r, i) => {
+                  html += `<div class="web-result">
+                    <div class="web-result-title"><a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a></div>
+                    <div class="web-result-url">${escapeHtml(r.url)}</div>
+                    <div class="web-result-snippet">${escapeHtml(r.snippet)}</div>
+                  </div>`;
+                });
+                html += '</div>';
+              }
+            }
+          } catch (webErr) {
+            console.warn('Web search failed:', webErr);
+          }
+        }
+
+        box.innerHTML = html;
+      } catch (err) {
+        box.innerHTML = `<div class="error">❌ Network error: ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function clearAll() {
+      if (!confirm('Are you sure you want to clear all indexed documents?')) return;
+      try {
+        await fetch(`${API_URL}/api/pdf/clear`, { method: 'DELETE' });
+        document.getElementById('answerBox').innerHTML = '<div class="success">All documents cleared</div>';
+        loadStats();
+      } catch (err) {
+        alert('Failed to clear documents: ' + err.message);
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const res = await fetch(`${API_URL}/api/pdf/stats`);
+        const text = await res.text();
+        if (!text.trim()) {
+          throw new Error(`Empty response (${res.status})`);
+        }
+        const data = JSON.parse(text);
+        const docCountEl = document.getElementById('docCount');
+        const chunkCountEl = document.getElementById('chunkCount');
+        const modelNameEl = document.getElementById('modelName');
+
+        if (docCountEl) docCountEl.textContent = data.documents || 0;
+        if (chunkCountEl) chunkCountEl.textContent = data.total_chunks || 0;
+        if (modelNameEl) modelNameEl.textContent = 'meta-llama/llama-3.3-70b-instruct:free';
+      } catch (err) {
+        const modelNameEl = document.getElementById('modelName');
+        if (modelNameEl) modelNameEl.textContent = 'Offline';
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Load stats on page load and refresh every 10 seconds
+    loadStats();
+    setInterval(loadStats, 10000);
+
+    // Allow Enter key to submit question
+    document.getElementById('question').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        askQuestion();
+      }
+    });
+  </script>
+</body>
+</html>

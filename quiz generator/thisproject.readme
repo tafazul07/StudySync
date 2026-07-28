@@ -1,0 +1,140 @@
+# StudySync Quiz Generator Project Analysis
+
+This document provides a comprehensive analysis of the Quiz Generator project, including directory structure, architecture, technical debt, and critical bugs that need to be resolved.
+
+---
+
+## 1. Project Overview
+
+The **Quiz Generator** is a cloud-based AI web application designed to generate customizable quizzes (Multiple Choice and Fill in the Blanks) directly from uploaded documents (`.pdf`, `.docx`, `.txt`). 
+* **Backend:** Node.js with Express.
+* **LLM Engine:** OpenRouter API (utilizing Llama 3.3 by default).
+* **Storage Solution:** Local JSON file-based database (zero external database setup required).
+* **Search / Retrieval (RAG):** Custom lightweight text chunking with a client-side vector search simulation using cosine similarity.
+* **Frontend:** A single-page dashboard styled with modern CSS (custom dark theme, gradients, glowing effects).
+
+---
+
+## 2. Directory Structure
+
+Here is an overview of the workspace structure:
+
+```
+quiz generator/
+├── .env                       # API keys and server configuration
+├── .gitignore                 # Git ignore patterns
+├── .npmrc                     # Node registry configuration
+├── server.js                  # Main application entrypoint
+├── package.json               # Dependencies and script definitions
+├── README.md                  # Developer instructions and project overview
+├── data/                      # Local JSON storage folder
+│   ├── chunks.json            # Chunked text database
+│   ├── documents.json         # Uploaded document metadata
+│   └── quizzes.json           # Generated quiz history
+├── public/                    # Static frontend assets
+│   ├── index.html             # UI structure and components
+│   ├── style.css              # Custom styling (CSS variables, dark theme)
+│   └── app.js                 # Frontend interactivity and API requests
+├── routes/                    # API Route Handlers
+│   ├── quiz.js                # Quiz generation and retrieval routes
+│   └── upload.js              # File upload, text extraction, OCR routes
+├── services/                  # Business Logic & Helpers
+│   ├── chunker.js             # Text chunking and cosine similarity functions
+│   ├── openrouter.js          # OpenRouter API wrapper and prompt templates
+│   └── store.js               # JSON file operations (CRUD)
+└── uploads/                   # Temporary folder for processed uploads
+```
+
+---
+
+## 3. Architecture & RAG Pipeline
+
+```mermaid
+graph TD
+    A[User Uploads File] -->|Multer| B(routes/upload.js)
+    B -->|pdf-parse / mammoth| C{Text Extracted?}
+    C -->|No/Sparse PDF| D[Tesseract.js OCR]
+    C -->|Yes| E[Clean Text]
+    D --> E
+    E -->|services/store.js| F[Save Doc Metadata to documents.json]
+    E -->|services/chunker.js| G[Chunk Text ~800 words]
+    G -->|services/openrouter.js| H[Generate Mock Embeddings]
+    H -->|services/store.js| I[Save to chunks.json]
+
+    J[User Requests Quiz] -->|routes/quiz.js| K[Find Relevant Chunks]
+    K -->|Cosine Similarity| L[Top 5 Chunks]
+    L -->|Prompt + Context| M[OpenRouter API]
+    M -->|JSON Response| N[Validate & Save Quiz to quizzes.json]
+    N -->|Render UI| O[User Takes Quiz]
+```
+
+---
+
+## 4. Key Components Breakdown
+
+### 4.1. The Backend Core (`server.js`)
+Configures an Express app with CORS support, a request size limit of `50mb`, and a rate limiter restricting endpoints under `/api/` to 50 requests per 15 minutes. It serves frontend assets from `/public` and hosts a basic health check endpoint at `/api/health`.
+
+### 4.2. API Routes
+* **[upload.js](file:///c:/Users/User/Desktop/studysync/quiz%20generator/routes/upload.js)**: Configures Multer to store incoming uploads temporarily in the `uploads/` directory. Performs extraction based on file extension and invokes `tesseract.js` for scanned or low-text PDF files. Deletes the temporary files upon successful processing.
+* **[quiz.js](file:///c:/Users/User/Desktop/studysync/quiz%20generator/routes/quiz.js)**: Manages quiz generation by looking up matching text chunks using simulated embedding similarity, calling OpenRouter, and storing the formatted result in the quiz store.
+
+### 4.3. Services
+* **[openrouter.js](file:///c:/Users/User/Desktop/studysync/quiz%20generator/services/openrouter.js)**: Integrates the OpenRouter API wrapper. Defines strict structured system prompts (`mcq` and `fill_blank`) that enforce returning pure JSON without markdown wrappers. Contains a fallback mock embedding vectorizer.
+* **[chunker.js](file:///c:/Users/User/Desktop/studysync/quiz%20generator/services/chunker.js)**: Implements text splitting (sliding window over words) and simulated vector search using standard Cosine Similarity.
+* **[store.js](file:///c:/Users/User/Desktop/studysync/quiz%20generator/services/store.js)**: Implements database actions reading and writing directly to the `data/*.json` files.
+
+---
+
+## 5. Critical Bugs & Mismatches
+
+During code inspection, several severe bugs and inconsistencies were discovered between the frontend client implementation and the backend system structure:
+
+### ⚠️ Bug 1: Health Check Crash (UI Displays "Offline" Permanently)
+* **Location:** [app.js:L616-662](file:///c:/Users/User/Desktop/studysync/quiz%20generator/public/app.js#L616-L662) and [server.js:L30-41](file:///c:/Users/User/Desktop/studysync/quiz%20generator/server.js#L30-L41).
+* **Problem:** The frontend `checkHealth()` function expects health metrics containing Ollama database and model statuses (`data.ollama`, `data.models`, etc.), which was likely left over from a local Ollama/PostgreSQL implementation:
+  ```javascript
+  elements.ollamaDetails.textContent = `Connected to ${data.ollama}`;
+  elements.dbDetails.textContent = 'PostgreSQL + pgvector ready';
+  const gemmaReady = data.models.gemma3;
+  ```
+  However, the backend's `/api/health` endpoint returns fields specific to OpenRouter and JSON files:
+  ```javascript
+  res.json({
+      status: hasKey ? 'ok' : 'missing_api_key',
+      openrouter: { model: '...', hasKey: true },
+      storage: 'JSON files (no database)'
+  });
+  ```
+  Because `data.models` is `undefined`, the frontend triggers an unhandled `TypeError` inside the try-catch block, resulting in the status indicators showing the system as **"Offline"** indefinitely.
+
+### ⚠️ Bug 2: `undefined` Embedded Count in Upload Success Screen
+* **Location:** [app.js:L192](file:///c:/Users/User/Desktop/studysync/quiz%20generator/public/app.js#L192) and [upload.js:L124-132](file:///c:/Users/User/Desktop/studysync/quiz%20generator/routes/upload.js#L124-L132).
+* **Problem:** On successfully uploading a document, the UI displays cards for "Chunks", "Embedded", and "Characters". It attempts to render `data.embedded`. However, the backend `routes/upload.js` response object does not include an `embedded` field (only `chunks`, `textLength`, `preview`, etc.). As a result, the UI shows **"undefined"** for the Embedded count.
+
+### ⚠️ Bug 3: Quiz History Feature is Unimplemented in Frontend
+* **Location:** [app.js:L707-710](file:///c:/Users/User/Desktop/studysync/quiz%20generator/public/app.js#L707-L710).
+* **Problem:** The navigation bar contains a button to switch to the "History" panel, but the frontend handler is placeholder-only:
+  ```javascript
+  async function loadHistory() {
+      elements.historyList.innerHTML = '<p class="empty-state">History feature coming soon</p>';
+  }
+  ```
+  Furthermore, `loadHistory()` is never actually called when navigating or initializing. The backend already fully supports saving and querying quiz history (`routes/quiz.js: getQuizzes()`).
+
+---
+
+## 6. Optimization & Improvement Areas
+
+1. **Lightweight Embedding Quality:** The local hash-based vectorizer `generateEmbedding` in `openrouter.js` is extremely fast and requires no third-party APIs. However, because it maps words directly to hash index frequencies, it does not understand semantic context (e.g., matching "car" and "automobile"). In a production FYP system, this should ideally be upgraded to use a real embedding API (like HuggingFace Free Inference, OpenRouter's own embedding models if supported, or OpenAI's embeddings).
+2. **Blocking OCR Pipeline:** In `routes/upload.js`, `extractPDF` initializes and runs Tesseract.js OCR synchronously on the main Node event loop when processing sparse PDF files. For larger files, this will temporarily freeze the backend server, blocking other concurrent users.
+3. **Difficulty Filter Placeholder:** The UI allows selecting Difficulty levels (`easy`, `medium`, `hard`) when generating a quiz, but the backend `quiz.js` and `openrouter.js` completely ignore this field in the prompt and retrieval processes.
+
+---
+
+## 7. Suggested Action Items
+
+1. **Align `/api/health` Payload with UI:** Update `public/app.js` to parse the `openrouter` and `storage` payload format, updating the UI cards to display OpenRouter API connectivity and local JSON file statuses.
+2. **Fix Upload Metrics:** Expose the number of successfully embedded chunks in the backend response or update the frontend card to display the `chunks` count.
+3. **Implement History UI Screen:** Hook up `loadHistory()` to call `/api/quiz` (or `/api/quiz/history/:docId`) and render the historical quiz records so users can review or retake past quizzes.
+4. **Clean UI References:** Update page titles and subtitles in `index.html` from "Gemma 3 12B" and "Ollama/PostgreSQL" to match the actual OpenRouter and JSON stack.

@@ -1,0 +1,25 @@
+{
+  "name": "brainsync-server",
+  "version": "1.0.0",
+  "description": "Brain Sync - Collaborative Editor Backend",
+  "main": "server.js",
+  "scripts": {
+    "start:api": "node server.js",
+    "start:yjs": "node yjs-server.js",
+    "dev:api": "nodemon server.js",
+    "dev:yjs": "nodemon yjs-server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "ws": "^8.17.0",
+    "y-websocket": "^1.5.4",
+    "yjs": "^13.6.15"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "vite": "^8.0.13"
+  }
+}

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 StudySync Quiz Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+    <!-- Chart.js CDN for Teacher Analytics Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>🧠 QuizGen</h1>
+                <p>OpenRouter Powered</p>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" data-view="upload">
+                    <span>📤</span> Upload
+                </button>
+                <button class="nav-btn" data-view="generate">
+                    <span>⚙️</span> Generate
+                </button>
+                <button class="nav-btn" data-view="history">
+                    <span>📚</span> History
+                </button>
+                <button class="nav-btn" data-view="analytics">
+                    <span>📊</span> Analytics
+                </button>
+                <button class="nav-btn" data-view="settings">
+                    <span>⚡</span> Status
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Checking...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Upload View -->
+            <section class="view active" id="uploadView">
+                <header class="view-header">
+                    <h2>📤 Upload Document</h2>
+                    <p>Upload PDF, DOCX, PPTX, or TXT files to generate quizzes</p>
+                </header>
+
+                <div class="upload-zone" id="dropZone">
+                    <input type="file" id="fileInput" accept=".pdf,.docx,.pptx,.txt" hidden>
+                    <div class="upload-icon">📁</div>
+                    <h3>Drop your file here</h3>
+                    <p>or <span class="click-text">click to browse</span></p>
+                    <small>Supports: PDF, DOCX, PPTX, TXT (max 50MB)</small>
+                </div>
+
+                <div class="upload-progress hidden" id="uploadProgress">
+                    <div class="progress-track">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <p id="uploadStatus">Uploading...</p>
+                </div>
+
+                <div class="upload-result hidden" id="uploadResult"></div>
+
+                <div class="documents-list" id="documentsList">
+                    <h3>📄 Recent Documents</h3>
+                    <div id="documentsContainer">
+                        <p class="empty-state">No documents uploaded yet</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Generate View -->
+            <section class="view" id="generateView">
+                <header class="view-header">
+                    <h2>⚙️ Generate Quiz</h2>
+                    <p>Create MCQ or Fill-in-the-Blanks from your documents</p>
+                </header>
+
+                <div class="generate-form">
+                    <div class="form-group">
+                        <label>Select Document</label>
+                        <select id="docSelect" class="form-select">
+                            <option value="">-- Choose a document --</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Quiz Type</label>
+                        <div class="quiz-type-toggle">
+                            <button class="type-btn active" data-type="mcq">
+                                <span>🔘</span>
+                                <div>
+                                    <strong>Multiple Choice</strong>
+                                    <small>4 options, pick the right one</small>
+                                </div>
+                            </button>
+                            <button class="type-btn" data-type="fill_blank">
+                                <span>✏️</span>
+                                <div>
+                                    <strong>Fill in Blanks</strong>
+                                    <small>Type the missing word/phrase</small>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="topicsContainer" style="display:none; margin-bottom: 20px;">
+                        <label>Suggested Topics (Extracted from document)</label>
+                        <div id="topicBadgesList" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="topicInput">Topic / Subject</label>
+                        <input type="text" id="topicInput" class="form-input" 
+                               placeholder="e.g., Neural Networks, World War 2, Photosynthesis">
+                        <small class="input-hint">Be specific for better results</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="numQuestions">Questions</label>
+                            <input type="number" id="numQuestions" class="form-input" 
+                                   min="1" max="20" value="5">
+                        </div>
+                        <div class="form-group half">
+                            <label for="difficulty">Difficulty</label>
+                            <select id="difficulty" class="form-select">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="generate-btn" id="generateBtn" disabled>
+                        <span class="btn-icon">🚀</span>
+                        <span class="btn-text">Generate Quiz</span>
+                        <span class="btn-spinner hidden">⏳</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Quiz View (shown after generation) -->
+            <section class="view" id="quizView">
+                <header class="view-header quiz-header">
+                    <div>
+                        <h2 id="quizTitle">Quiz</h2>
+                        <p id="quizMeta"></p>
+                    </div>
+                    <div class="quiz-score hidden" id="quizScore">
+                        <span class="score-value" id="scoreValue">0</span>
+                        <span class="score-total">/</span>
+                        <span class="score-total" id="totalValue">0</span>
+                    </div>
+                </header>
+
+                <div class="quiz-container" id="quizContainer"></div>
+
+                <div class="weak-topics-card hidden" id="weakTopicsCard" style="margin-top: 24px; margin-bottom: 24px; padding: 20px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg);">
+                    <h3 style="margin-bottom: 12px;">🎯 Weak Topic Analysis</h3>
+                    <div id="weakTopicsList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                </div>
+
+                <div class="quiz-actions">
+                    <button class="action-btn secondary" id="retryBtn">
+                        <span>🔄</span> Try Again
+                    </button>
+                    <button class="action-btn secondary" id="newQuizBtn">
+                        <span>✨</span> New Quiz
+                    </button>
+                    <button class="action-btn primary" id="checkAllBtn">
+                        <span>✅</span> Check All Answers
+                    </button>
+                </div>
+            </section>
+
+            <!-- History View -->
+            <section class="view" id="historyView">
+                <header class="view-header">
+                    <h2>📚 Quiz History</h2>
+                    <p>View and retake your previously generated quizzes</p>
+                </header>
+
+                <div class="history-list" id="historyList">
+                    <p class="empty-state">No quizzes generated yet</p>
+                </div>
+            </section>
+
+            <!-- Analytics View -->
+            <section class="view" id="analyticsView">
+                <header class="view-header">
+                    <h2>📊 Teacher Analytics Dashboard</h2>
+                    <p>Track class performance, topic mastery, and weak areas</p>
+                </header>
+
+                <!-- KPI Metrics -->
+                <div class="dashboard-grid">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-label">Total Attempts</div>
+                        <div class="dashboard-card-value" id="analyticAttempts">0</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-label">Class Average Score</div>
+                        <div class="dashboard-card-value" id="analyticAvgScore">0%</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-label">Documents Active</div>
+                        <div class="dashboard-card-value" id="analyticDocs">0</div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-label">Top Weak Topic</div>
+                        <div class="dashboard-card-value" id="analyticWeakTopic" style="font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 8px;">N/A</div>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>📈 Performance Trends</h3>
+                        <canvas id="trendsChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🎯 Topic Mastery</h3>
+                        <canvas id="topicChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Attempts History Table -->
+                <div class="attempts-table-wrapper">
+                    <h3>📝 Recent Quiz Attempts</h3>
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Document</th>
+                                <th>Topic</th>
+                                <th>Difficulty</th>
+                                <th>Type</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analyticsTableBody">
+                            <tr>
+                                <td colspan="6" class="empty-state" style="text-align: center;">No quiz attempts logged yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Status View -->
+            <section class="view" id="settingsView">
+                <header class="view-header">
+                    <h2>⚡ System Status</h2>
+                    <p>Check active API connections and storage state</p>
+                </header>
+
+                <div class="status-cards">
+                    <div class="status-card" id="ollamaStatus">
+                        <div class="status-icon">🌐</div>
+                        <h3>OpenRouter API</h3>
+                        <div class="status-badge" id="ollamaBadge">Checking...</div>
+                        <p id="ollamaDetails">Verifying connection...</p>
+                    </div>
+
+                    <div class="status-card" id="dbStatus">
+                        <div class="status-icon">💾</div>
+                        <h3>JSON Database</h3>
+                        <div class="status-badge" id="dbBadge">Checking...</div>
+                        <p id="dbDetails">Verifying connection...</p>
+                    </div>
+
+                    <div class="status-card" id="modelsStatus">
+                        <div class="status-icon">📦</div>
+                        <h3>Active Model</h3>
+                        <div class="status-badge" id="modelsBadge">Checking...</div>
+                        <p id="modelsDetails">Checking active model...</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner-large"></div>
+            <h3>Llama 3.3 is thinking...</h3>
+            <p>This usually takes 10-25 seconds</p>
+            <div class="loading-tips">
+                <p>💡 Tip: <span id="loadingTip">Smaller chunks = faster generation</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

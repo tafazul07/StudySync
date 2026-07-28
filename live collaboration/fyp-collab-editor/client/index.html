@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Sync</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+
+    <script type="importmap">
+    {
+        "imports": {
+            "yjs": "https://esm.sh/yjs@13.6.15",
+            "y-websocket": "https://esm.sh/y-websocket@1.5.4?deps=yjs@13.6.15",
+            "@tiptap/core": "https://esm.sh/@tiptap/core@2.4.0",
+            "@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@2.4.0",
+            "@tiptap/extension-collaboration": "https://esm.sh/@tiptap/extension-collaboration@2.4.0?deps=yjs@13.6.15",
+            "@tiptap/extension-collaboration-cursor": "https://esm.sh/@tiptap/extension-collaboration-cursor@2.4.0?deps=yjs@13.6.15"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <header class="bs-header">
+            <div class="bs-header-left">
+                <div class="bs-logo">
+                    <svg class="bs-logo-svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="8" fill="#1a73e8"/><text x="20" y="28" text-anchor="middle" fill="white" font-size="22" font-weight="700" font-family="Roboto">B</text></svg>
+                    <div class="bs-brand-text">
+                        <div class="bs-title-row">
+                            <input type="text" id="doc-title" placeholder="Untitled document" autocomplete="off" />
+                            <span class="bs-star" title="Star document">☆</span>
+                            <span class="bs-folder">📁 My Documents</span>
+                            <span class="bs-cloud" id="cloud-status" title="Save status">☁️</span>
+                        </div>
+                        <nav class="bs-menu">
+                            <span class="bs-menu-item">File</span>
+                            <span class="bs-menu-item">Edit</span>
+                            <span class="bs-menu-item">View</span>
+                            <span class="bs-menu-item">Insert</span>
+                            <span class="bs-menu-item">Format</span>
+                            <span class="bs-menu-item">Tools</span>
+                            <span class="bs-menu-item" id="menu-versions">Version history</span>
+                            <span class="bs-menu-item" id="menu-toc">Table of contents</span>
+                            <span class="bs-menu-item">Help</span>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            <div class="bs-header-right">
+                <span id="save-status" class="bs-save-status">Initializing...</span>
+                <div class="bs-avatars" id="user-avatars"></div>
+                <button id="btn-share" class="bs-btn-share">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                    Share
+                </button>
+                <button id="btn-ai-toggle" class="bs-btn-ai">🤖 AI</button>
+            </div>
+        </header>
+
+        <div class="bs-toolbar-wrap">
+            <div class="bs-toolbar">
+                <div class="bs-tool-group">
+                    <button data-cmd="undo" title="Undo (Ctrl+Z)">↩️</button>
+                    <button data-cmd="redo" title="Redo (Ctrl+Y)">↪️</button>
+                    <button data-cmd="print" title="Print (Ctrl+P)">🖨️</button>
+                </div>
+                <div class="bs-tool-sep"></div>
+                <div class="bs-tool-group">
+                    <select id="font-family"><option>Arial</option><option value="Open Sans" selected>Open Sans</option><option>Roboto</option><option>Georgia</option><option>Courier New</option></select>
+                    <select id="font-size"><option>9</option><option>10</option><option>11</option><option>12</option><option selected>14</option><option>16</option><option>18</option><option>24</option><option>32</option><option>48</option></select>
+                </div>
+                <div class="bs-tool-sep"></div>
+                <div class="bs-tool-group">
+                    <button data-cmd="bold" title="Bold (Ctrl+B)" class="bs-tool-bold">B</button>
+                    <button data-cmd="italic" title="Italic (Ctrl+I)" class="bs-tool-italic">I</button>
+                    <button data-cmd="underline" title="Underline (Ctrl+U)" class="bs-tool-underline">U</button>
+                    <button data-cmd="strike" title="Strikethrough">S̶</button>
+                    <button data-cmd="code" title="Code">&lt;/&gt;</button>
+                </div>
+                <div class="bs-tool-sep"></div>
+                <div class="bs-tool-group">
+                    <button data-cmd="heading" data-level="1" title="Heading 1">H1</button>
+                    <button data-cmd="heading" data-level="2" title="Heading 2">H2</button>
+                    <button data-cmd="heading" data-level="3" title="Heading 3">H3</button>
+                </div>
+                <div class="bs-tool-sep"></div>
+                <div class="bs-tool-group">
+                    <button data-cmd="bulletList" title="Bulleted list">• List</button>
+                    <button data-cmd="orderedList" title="Numbered list">1. List</button>
+                    <button data-cmd="blockquote" title="Quote block">❝ Quote</button>
+                </div>
+                <div class="bs-tool-sep"></div>
+                <div class="bs-tool-group">
+                    <button id="btn-comment" title="Add comment (Ctrl+Alt+M)">💬</button>
+                    <button id="btn-permission" title="Paragraph permissions">🔒</button>
+                    <button id="btn-toc-toggle" title="Table of contents">📑</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bs-main">
+            <aside class="bs-sidebar bs-sidebar-left" id="sidebar-left">
+                <div class="bs-panel">
+                    <div class="bs-panel-header"><span class="bs-panel-title">📄 Documents</span><button id="btn-new-doc" class="bs-icon-btn" title="New document">+</button></div>
+                    <div id="docs-list" class="bs-docs-list"><div class="bs-skeleton-line"></div><div class="bs-skeleton-line"></div><div class="bs-skeleton-line"></div></div>
+                </div>
+                <div class="bs-panel" id="toc-panel" style="display:none;">
+                    <div class="bs-panel-header"><span class="bs-panel-title">📑 Table of Contents</span></div>
+                    <div id="toc-content" class="bs-toc-content"><p class="bs-empty">No headings yet. Add H1, H2, or H3.</p></div>
+                </div>
+            </aside>
+
+            <main class="bs-editor-wrap">
+                <div class="bs-ruler"><div class="bs-ruler-marks"></div></div>
+                <div class="bs-page">
+                    <div id="editor-loading" class="bs-editor-loading"><div class="bs-spinner"></div><p>Loading Brain Sync Editor...</p><small id="loading-detail">Connecting to services</small></div>
+                    <div id="editor" style="display:none;"></div>
+                    <div id="editor-error" class="bs-editor-error" style="display:none;"><div class="bs-error-icon">⚠️</div><h3>Editor failed to load</h3><p id="error-message"></p><pre id="error-detail"></pre><button onclick="location.reload()" class="bs-btn-primary">Reload Page</button></div>
+                </div>
+            </main>
+
+            <aside class="bs-sidebar bs-sidebar-right">
+                <div class="bs-panel" id="comments-panel">
+                    <div class="bs-panel-header"><span class="bs-panel-title">💬 Comments</span></div>
+                    <div id="comments-list" class="bs-comments-list"><p class="bs-empty">Select text and click 💬 to add a comment</p></div>
+                </div>
+                <div class="bs-panel" id="ai-panel" style="display:none;">
+                    <div class="bs-panel-header"><span class="bs-panel-title">🤖 Brain Sync AI</span></div>
+                    <p class="bs-hint">OpenRouter proxy configured in backend</p>
+                    <textarea id="ai-prompt" placeholder="Ask me anything..."></textarea>
+                    <button id="btn-ai-generate" class="bs-btn-primary">✨ Generate</button>
+                    <div id="ai-response" class="bs-ai-response"></div>
+                    <div class="bs-ai-actions"><button id="btn-ai-improve" class="bs-btn-secondary">Improve</button><button id="btn-ai-summarize" class="bs-btn-secondary">Summarize</button></div>
+                </div>
+                <div class="bs-panel" id="versions-panel" style="display:none;">
+                    <div class="bs-panel-header"><span class="bs-panel-title">🕐 Version History</span><button id="btn-save-version" class="bs-icon-btn" title="Save current version">💾</button></div>
+                    <div id="versions-list" class="bs-versions-list"><p class="bs-empty">No saved versions</p></div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div id="version-modal" class="bs-modal" style="display:none;">
+        <div class="bs-modal-box">
+            <div class="bs-modal-head"><h3>💾 Save Version</h3><span class="bs-modal-close">&times;</span></div>
+            <div class="bs-modal-body"><p>Name this version so you can restore it later.</p><input type="text" id="version-name" placeholder="e.g., Before AI rewrite, Draft v2..." /></div>
+            <div class="bs-modal-foot"><button id="btn-cancel-version" class="bs-btn-secondary">Cancel</button><button id="btn-confirm-version" class="bs-btn-primary">Save Version</button></div>
+        </div>
+    </div>
+
+    <div id="preview-modal" class="bs-modal" style="display:none;">
+        <div class="bs-modal-box bs-modal-wide">
+            <div class="bs-modal-head"><h3 id="preview-title">Version Preview</h3><span class="bs-modal-close">&times;</span></div>
+            <div class="bs-modal-body"><div id="preview-meta" class="bs-preview-meta"></div><div id="preview-body" class="bs-preview-body"></div></div>
+            <div class="bs-modal-foot"><button id="btn-close-preview" class="bs-btn-secondary">Close</button><button id="btn-restore-version" class="bs-btn-primary">🔄 Restore This Version</button></div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
