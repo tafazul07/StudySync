@@ -13,9 +13,11 @@ import { setupWSConnection } from 'y-websocket/bin/utils';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import dbStore from './services/dbStore.js';
 import { securityHeaders, sanitizeFilenameForHeader, sanitizeError, logSecurityEvent } from './middleware/security.js';
+import { authenticate } from './middleware/auth.js';
 import { verifyToken } from './services/authService.js';
-import { cleanupExpiredSessions } from './services/authService.js';
+import { cleanupExpiredSessions, initAuthService } from './services/authService.js';
 import logger from './services/logger.js';
+import healthService from './services/healthService.js';
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -270,8 +272,62 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploads via an authenticated, sanitized endpoint (no public static serving)
+app.get('/uploads/:filename', authenticate, async (req, res) => {
+  try {
+    const { filename } = req.params;
+
+    // Allow only safe filenames (alphanumeric, dash, underscore, dot)
+    if (!/^[\w-.]{1,255}$/.test(filename)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const uploadsDir = path.resolve(__dirname, 'uploads');
+    const filePath = path.resolve(uploadsDir, filename);
+
+    // Path traversal protection
+    if (!filePath.startsWith(uploadsDir)) {
+      logSecurityEvent('ACCESS_DENIED', {
+        ip: req.ip,
+        path: req.path,
+        message: `Path traversal attempt blocked: ${filename}`,
+        severity: 'critical',
+        userId: req.user?.id
+      });
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const safeName = sanitizeFilenameForHeader(filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    const data = await fs.readFile(filePath);
+    res.send(data);
+
+    logSecurityEvent('FILE_DOWNLOAD', {
+      ip: req.ip,
+      path: req.path,
+      message: `Authenticated file download: ${filename}`,
+      userId: req.user?.id,
+      severity: 'info'
+    });
+  } catch (error) {
+    logSecurityEvent('FILE_DOWNLOAD', {
+      ip: req.ip,
+      path: req.path,
+      message: `Authenticated download error: ${error.message}`,
+      userId: req.user?.id,
+      severity: 'error'
+    });
+    res.status(500).json({ error: 'Internal server error during file download.' });
+  }
+});
 
 // Proxy error handler factory
 function ragProxyError(err, req, res) {
@@ -392,12 +448,19 @@ app.get('/download/:token', async (req, res) => {
   }
 });
 
-// Health check — minimal info disclosure
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString()
-  });
+// Health check — detailed system health
+app.get('/api/health', async (req, res) => {
+  try {
+    const health = await healthService.getSystemHealth();
+    const statusCode = health.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'unhealthy',
+      error: 'Health check failed',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // A05: Error handling — never leak stack traces or internal details
@@ -440,7 +503,19 @@ async function runSessionCleanup() {
 
 setInterval(runSessionCleanup, SESSION_CLEANUP_INTERVAL).unref();
 
-server.listen(PORT, () => {
+// Initialize services
+async function initializeServices() {
+  try {
+    await initAuthService();
+    logger.info('Auth service initialized with Redis');
+  } catch (err) {
+    logger.error('Failed to initialize auth service', { error: err.message });
+    // Continue without Redis - will use database fallback
+  }
+}
+
+server.listen(PORT, async () => {
+  await initializeServices();
   logger.info('StudySync Unified Server started', {
     port: PORT,
     api: `http://localhost:${PORT}/api`,

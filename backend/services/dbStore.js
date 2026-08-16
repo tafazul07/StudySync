@@ -1,4 +1,5 @@
 import { query, getClient } from './db.js';
+import { query as queryRead, getClient as getClientRead } from './dbRead.js';
 import crypto from 'crypto';
 
 // UUID v1-v5 format regex (case-insensitive)
@@ -265,7 +266,7 @@ class DatabaseStore {
 
   async select(tableName, filters = {}) {
     if (Object.keys(filters).length === 0) {
-      const result = await query(`SELECT * FROM ${tableName}`);
+      const result = await queryRead(`SELECT * FROM ${tableName}`);
       return result.rows;
     }
 
@@ -288,13 +289,13 @@ class DatabaseStore {
     }
 
     if (keys.length === 0) {
-        const result = await query(`SELECT * FROM ${tableName}`);
+        const result = await queryRead(`SELECT * FROM ${tableName}`);
         return result.rows;
     }
 
     const sql = `SELECT * FROM ${tableName} WHERE ${keys.join(' AND ')}`;
     try {
-      const result = await query(sql, values);
+      const result = await queryRead(sql, values);
       return result.rows;
     } catch (error) {
       // Gracefully handle invalid UUID format in filter values
@@ -408,7 +409,8 @@ class DatabaseStore {
   }
 
   async findAll(tableName) {
-    return this.select(tableName);
+    const result = await queryRead(`SELECT * FROM ${tableName}`);
+    return result.rows;
   }
 
   async count(tableName, filters = {}) {

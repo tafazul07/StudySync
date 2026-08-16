@@ -118,12 +118,22 @@ export async function loginUser(email, password) {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken();
 
-  const expiresAt = new Date(Date.now() + SESSION_EXPIRY_MS).toISOString();
-  await dbStore.insert('sessions', {
-    user_id: user.id,
-    token: refreshToken,
-    expires_at: expiresAt
-  });
+  // Store session in Redis
+  if (sessionStore) {
+    await sessionStore.set(refreshToken, {
+      user_id: user.id,
+      email: user.email,
+      created_at: new Date().toISOString()
+    });
+  } else {
+    // Fallback to database if Redis not available
+    const expiresAt = new Date(Date.now() + SESSION_EXPIRY_MS).toISOString();
+    await dbStore.insert('sessions', {
+      user_id: user.id,
+      token: refreshToken,
+      expires_at: expiresAt
+    });
+  }
 
   return {
     user: {
@@ -141,15 +151,24 @@ export async function loginUser(email, password) {
 
 // Refresh access token
 export async function refreshAccessToken(refreshToken) {
-  const session = await dbStore.selectOne('sessions', { token: refreshToken });
+  let session = null;
 
-  if (!session) {
-    throw new Error('Invalid or expired refresh token');
+  // Try Redis first
+  if (sessionStore) {
+    session = await sessionStore.get(refreshToken);
+  } else {
+    // Fallback to database
+    session = await dbStore.selectOne('sessions', { token: refreshToken });
+    if (session && session.expires_at) {
+      // Check expiry for database sessions
+      if (new Date(session.expires_at) < new Date()) {
+        await dbStore.deleteOne('sessions', { token: refreshToken });
+        throw new Error('Invalid or expired refresh token');
+      }
+    }
   }
 
-  // Check expiry
-  if (new Date(session.expires_at) < new Date()) {
-    await dbStore.deleteOne('sessions', { token: refreshToken });
+  if (!session) {
     throw new Error('Invalid or expired refresh token');
   }
 
@@ -175,12 +194,20 @@ export async function refreshAccessToken(refreshToken) {
 
 // Logout user
 export async function logoutUser(refreshToken) {
-  await dbStore.deleteOne('sessions', { token: refreshToken });
+  if (sessionStore) {
+    await sessionStore.delete(refreshToken);
+  } else {
+    await dbStore.deleteOne('sessions', { token: refreshToken });
+  }
 }
 
 // Logout from all devices
 export async function logoutAllDevices(userId) {
-  await dbStore.delete('sessions', { user_id: userId });
+  if (sessionStore) {
+    await sessionStore.deleteAll(userId);
+  } else {
+    await dbStore.delete('sessions', { user_id: userId });
+  }
 }
 
 // Get user by ID
@@ -236,11 +263,15 @@ export async function changePassword(userId, currentPassword, newPassword) {
 
 // Clean up expired sessions
 export async function cleanupExpiredSessions() {
-  const now = new Date().toISOString();
-  const sessions = await dbStore.findAll('sessions');
-  const expired = sessions.filter(s => s.expires_at < now);
-  for (const s of expired) {
-    await dbStore.deleteOne('sessions', { id: s.id });
+  // Redis automatically handles TTL expiration
+  // Only cleanup database sessions if Redis is not available
+  if (!sessionStore) {
+    const now = new Date().toISOString();
+    const sessions = await dbStore.findAll('sessions');
+    const expired = sessions.filter(s => s.expires_at < now);
+    for (const s of expired) {
+      await dbStore.deleteOne('sessions', { id: s.id });
+    }
   }
 }
 

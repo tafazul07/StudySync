@@ -1,19 +1,3 @@
-/**
- * Centralized logging service using Winston.
- *
- * Provides structured, leveled logging with:
- * - Console output (colorized in development)
- * - File output: combined.log (all levels) + error.log (error+)
- * - Security log: security.log (dedicated audit trail)
- *
- * Replaces scattered console.log/console.error calls throughout the app.
- *
- * Usage:
- *   import logger from './logger.js';
- *   logger.info('Server started', { port: 5000 });
- *   logger.error('DB connection failed', { error: err.message });
- *   logger.security('AUTH_FAILURE', { ip: '1.2.3.4', message: '...' });
- */
 
 import winston from 'winston';
 import path from 'path';
@@ -118,9 +102,6 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-// ============================================================
-// Convenience methods
-// ============================================================
 
 /**
  * Log a security event with structured data.

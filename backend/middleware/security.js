@@ -1,30 +1,18 @@
-/**
- * Security middleware and utilities for OWASP Top 10 protection.
- *
- * Covers:
- * - A01: Broken Access Control (ownership verification helper)
- * - A03: Injection (input sanitization, XSS prevention)
- * - A05: Security Misconfiguration (security headers)
- * - A07: Auth Failures (login rate limiting)
- * - A08: Software/Data Integrity (file upload validation)
- * - A09: Logging/Monitoring (security event logging)
- */
-
 import crypto from 'crypto';
 import path from 'path';
 import logger from '../services/logger.js';
 
-// ============================================================
+
 // A09: Security Event Logger — structured security logging
-// ============================================================
+
 export function logSecurityEvent(type, details) {
   // Use centralized Winston logger — writes to logs/security.log + console
   logger.security(type, details);
 }
 
-// ============================================================
+
 // A03: Input Sanitization — prevent XSS and injection
-// ============================================================
+
 // HTML-escape to prevent stored XSS
 export function sanitizeHtml(str) {
   if (typeof str !== 'string') return str;
@@ -60,31 +48,26 @@ export function validateStringLength(value, fieldName, maxLen = 500) {
   return null;
 }
 
-// ============================================================
+
 // A05: Security Headers middleware
-// ============================================================
+
 export function securityHeaders(req, res, next) {
-  // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'DENY');
-  // Control referrer information
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // Restrict browser features
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  // Remove X-Powered-By (already done by helmet, but just in case)
   res.removeHeader('X-Powered-By');
   next();
 }
 
-// ============================================================
+
 // A07: Login rate limiter — per-IP tracking
-// ============================================================
-const loginAttempts = new Map(); // IP -> { count, firstAttempt, lockedUntil }
+
+const loginAttempts = new Map();
 
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
-const WINDOW_DURATION = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_DURATION = 15 * 60 * 1000;
+const WINDOW_DURATION = 15 * 60 * 1000; 
 
 export function loginRateLimiter(req, res, next) {
   const ip = req.ip || req.connection?.remoteAddress || 'unknown';
@@ -147,9 +130,9 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000).unref();
 
-// ============================================================
+
 // A08: File Upload Validation
-// ============================================================
+
 // Dangerous file extensions that should never be allowed
 const BLOCKED_EXTENSIONS = new Set([
   '.exe', '.bat', '.cmd', '.com', '.msi', '.scr', '.pif',
@@ -175,9 +158,9 @@ export function safeFilename(originalName) {
   return randomName + ext;
 }
 
-// ============================================================
+
 // A01: Ownership verification helper
-// ============================================================
+
 export function verifyOwnership(resource, userId) {
   if (!resource) return false;
   // Check common ownership fields
@@ -187,9 +170,9 @@ export function verifyOwnership(resource, userId) {
          resource.created_by === userId;
 }
 
-// ============================================================
+
 // A03: Content-Disposition header sanitization
-// ============================================================
+
 export function sanitizeFilenameForHeader(filename) {
   // Remove control characters and quotes
   const safe = (filename || 'download')
@@ -198,9 +181,9 @@ export function sanitizeFilenameForHeader(filename) {
   return safe;
 }
 
-// ============================================================
+
 // A05: Error response sanitizer — don't leak internals
-// ============================================================
+
 export function sanitizeError(err) {
   // In production, never send stack traces or internal details
   const isDev = process.env.NODE_ENV !== 'production';
