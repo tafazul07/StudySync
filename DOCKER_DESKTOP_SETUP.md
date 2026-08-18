@@ -65,15 +65,18 @@ For local development without SSL, skip this step and modify `nginx/nginx.conf` 
 Open Docker Desktop and ensure it's running, then:
 
 ```bash
-# Build all services
-docker-compose build
+# Local run without SSL certificates (HTTP-only nginx on port 80)
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 
-# Start all services in detached mode
-docker-compose up -d
+# Production run (requires certificates in nginx/ssl)
+docker compose up -d --build
 
 # Check service status
-docker-compose ps
+docker compose ps
 ```
+
+`docker-compose.local.yml` swaps in `nginx/nginx.local.conf`, which is the same
+load balancer configuration served over HTTP so no certificates are needed.
 
 ## Step 5: Verify Deployment
 
@@ -196,27 +199,10 @@ docker-compose ps
 
 ## Local Development Without SSL
 
-For local development without HTTPS, modify `nginx/nginx.conf`:
+Use the local override, which serves the same load balancer over HTTP:
 
-1. Comment out the HTTP to HTTPS redirect:
-```nginx
-# server {
-#     listen 80;
-#     server_name _;
-#     return 301 https://$host$request_uri;
-# }
-```
-
-2. Change HTTPS server to HTTP:
-```nginx
-server {
-    listen 80;  # Change from 443 to 80
-    server_name _;
-    # Remove SSL configuration
-    # ssl_certificate /etc/nginx/ssl/cert.pem;
-    # ssl_certificate_key /etc/nginx/ssl/key.pem;
-    # ... rest of config
-}
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
 ## Performance Tuning
@@ -229,6 +215,16 @@ server {
    - Memory: 8GB+ recommended
    - CPUs: 4+ recommended
    - Disk: 50GB+
+
+### Rate Limits
+
+API rate limits are shared across all instances via Redis and configurable per
+environment:
+
+```bash
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+```
 
 ### Scale Backend Instances
 

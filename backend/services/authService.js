@@ -3,6 +3,20 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import dbStore from './dbStore.js';
+import { initRedis, RedisSessionStore } from './redisService.js';
+
+// Shared session storage. Stays null (database fallback) until Redis connects.
+let sessionStore = null;
+
+/**
+ * Connect Redis and route refresh-token sessions through it so every backend
+ * instance behind the load balancer resolves the same sessions.
+ */
+export async function initAuthService() {
+  await initRedis();
+  sessionStore = new RedisSessionStore(Number(process.env.REDIS_SESSION_TTL) || 604800);
+  return sessionStore;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET === 'your-jwt-secret-here') {

@@ -1,0 +1,8 @@
+# Local Docker Desktop override: HTTP-only nginx (no SSL certificates needed).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+services:
+  nginx:
+    volumes:
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
