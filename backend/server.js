@@ -18,6 +18,9 @@ import { verifyToken } from './services/authService.js';
 import { cleanupExpiredSessions, initAuthService } from './services/authService.js';
 import logger from './services/logger.js';
 import healthService from './services/healthService.js';
+import roomStore from './services/roomStore.js';
+import { attachRedisAdapter } from './services/socketAdapter.js';
+import { createRateLimitStore } from './services/rateLimitStore.js';
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -74,32 +77,25 @@ io.use((socket, next) => {
 // Yjs WebSocket server for collaboration
 const wss = new WebSocket.Server({ noServer: true });
 
-// Room state for WebRTC
-const rooms = new Map();
-
 io.on('connection', (socket) => {
   logger.info(`User connected: ${socket.id}`, { userId: socket.user?.id });
 
-  socket.on('join-room', (roomId) => {
-    socket.join(roomId);
+  socket.on('join-room', async (roomId) => {
+    try {
+      socket.join(roomId);
 
-    if (!rooms.has(roomId)) {
-      rooms.set(roomId, { users: new Set(), chats: [] });
+      const existingUsers = (await roomStore.getUsers(roomId)).filter(id => id !== socket.id);
+      await roomStore.addUser(roomId, socket.id);
+
+      socket.emit('existing-users', existingUsers);
+      socket.to(roomId).emit('user-joined', socket.id);
+      socket.emit('chat-history', await roomStore.getChats(roomId));
+
+      logger.info(`User ${socket.id} joined room ${roomId}`, { users: existingUsers.length + 1 });
+    } catch (err) {
+      logger.error('join-room failed', { error: err.message, roomId });
+      socket.emit('room-error', { error: 'Unable to join room' });
     }
-    const room = rooms.get(roomId);
-    room.users.add(socket.id);
-
-    // Send existing users to new user
-    const existingUsers = Array.from(room.users).filter(id => id !== socket.id);
-    socket.emit('existing-users', existingUsers);
-
-    // Notify others
-    socket.to(roomId).emit('user-joined', socket.id);
-
-    // Send chat history
-    socket.emit('chat-history', room.chats);
-
-    logger.info(`User ${socket.id} joined room ${roomId}`, { users: room.users.size });
   });
 
   // WebRTC Signaling
@@ -116,34 +112,40 @@ io.on('connection', (socket) => {
   });
 
   // Chat
-  socket.on('chat-message', ({ roomId, text }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-    const msg = {
-      id: Date.now().toString(36) + Math.random().toString(36).substr(2),
-      sender: socket.id,
-      text,
-      timestamp: new Date().toISOString()
-    };
-    room.chats.push(msg);
-    // Keep last 100 messages
-    if (room.chats.length > 100) room.chats.shift();
-    io.to(roomId).emit('chat-message', msg);
+  socket.on('chat-message', async ({ roomId, text }) => {
+    try {
+      const members = await roomStore.getUsers(roomId);
+      if (!members.includes(socket.id)) return;
+
+      const msg = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        sender: socket.id,
+        text,
+        timestamp: new Date().toISOString()
+      };
+      await roomStore.addChat(roomId, msg);
+      io.to(roomId).emit('chat-message', msg);
+    } catch (err) {
+      logger.error('chat-message failed', { error: err.message, roomId });
+    }
   });
 
-  // Disconnect cleanup
-  socket.on('disconnect', () => {
+  // Disconnect cleanup — socket.rooms is still populated during 'disconnecting'
+  socket.on('disconnecting', async () => {
     logger.info(`User disconnected: ${socket.id}`, { userId: socket.user?.id });
-    rooms.forEach((room, roomId) => {
-      if (room.users.has(socket.id)) {
-        room.users.delete(socket.id);
+    const joinedRooms = Array.from(socket.rooms).filter(roomId => roomId !== socket.id);
+
+    for (const roomId of joinedRooms) {
+      try {
+        const remaining = await roomStore.removeUser(roomId, socket.id);
         socket.to(roomId).emit('user-left', socket.id);
-        if (room.users.size === 0) {
-          rooms.delete(roomId);
+        if (remaining === 0) {
           logger.info(`Room ${roomId} deleted (empty)`);
         }
+      } catch (err) {
+        logger.error('disconnect cleanup failed', { error: err.message, roomId });
       }
-    });
+    }
   });
 });
 
@@ -234,22 +236,21 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// A07: Global API rate limiter
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' }
-});
-app.use('/api/', limiter);
+// A07: Global API rate limiter. Swapped for a Redis-backed limiter once Redis
+// is connected so the quota is shared by every backend instance.
+function buildApiLimiter(store) {
+  return rateLimit({
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+    max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' },
+    store,
+  });
+}
 
-// A07: Stricter rate limiter for uploads
-const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many upload attempts, please try again later.' }
-});
+let apiLimiter = buildApiLimiter(undefined);
+app.use('/api/', (req, res, next) => apiLimiter(req, res, next));
 
 // A03: Limit body size to prevent DoS (reduced from 50MB)
 app.use(express.json({ limit: '10mb' }));
@@ -511,16 +512,28 @@ async function initializeServices() {
   } catch (err) {
     logger.error('Failed to initialize auth service', { error: err.message });
     // Continue without Redis - will use database fallback
+    return;
+  }
+
+  try {
+    await attachRedisAdapter(io);
+    apiLimiter = buildApiLimiter(createRateLimitStore('api'));
+  } catch (err) {
+    logger.error('Failed to enable multi-instance scaling features', { error: err.message });
   }
 }
 
-server.listen(PORT, async () => {
+async function start() {
   await initializeServices();
-  logger.info('StudySync Unified Server started', {
-    port: PORT,
-    api: `http://localhost:${PORT}/api`,
-    websocket: `ws://localhost:${PORT}/yjs`,
+  server.listen(PORT, () => {
+    logger.info('StudySync Unified Server started', {
+      port: PORT,
+      api: `http://localhost:${PORT}/api`,
+      websocket: `ws://localhost:${PORT}/yjs`,
+    });
   });
-});
+}
 
-export { io, rooms };
+start();
+
+export { io };
