@@ -306,7 +306,7 @@ router.post('/:token/upload', authenticate, upload.single('file'), async (req, r
 });
 
 // Download file from vault (by file_token) — A08: path traversal protection
-router.get('/vault-file/:fileToken', async (req, res, next) => {
+router.get('/vault-file/:fileToken', authenticate, async (req, res, next) => {
   try {
     const { fileToken } = req.params;
 

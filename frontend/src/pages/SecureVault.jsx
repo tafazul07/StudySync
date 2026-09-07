@@ -174,12 +174,23 @@ export default function SecureVault() {
   };
 
   // === Download File from Vault ===
-  const handleDownloadFile = (fileToken, fileName) => {
-    const downloadUrl = `${window.location.origin}/api/vaults/vault-file/${fileToken}`;
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = fileName;
-    link.click();
+  const handleDownloadFile = async (fileToken, fileName) => {
+    try {
+      const res = await apiFetch(`/api/vaults/vault-file/${fileToken}`);
+      if (!res.ok) throw new Error('Unable to download this file');
+
+      const blobUrl = URL.createObjectURL(await res.blob());
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Error downloading vault file:', error);
+      alert(error.message || 'Unable to download this file');
+    }
   };
 
   // === Delete Vault ===

@@ -5,7 +5,7 @@ from app.services.embedding_service import generate_embeddings
 from app.services.vectorstore_service import vector_store
 import uuid
 
-async def upload_pdf(file: UploadFile):
+async def upload_pdf(file: UploadFile, user_id: str):
     """Handle PDF upload and indexing."""
     contents = await file.read()
 
@@ -23,7 +23,7 @@ async def upload_pdf(file: UploadFile):
     doc_id = str(uuid.uuid4())
     chunks = split_into_chunks(text)
     chunks_with_embeddings = await generate_embeddings(chunks)
-    stored_count = await vector_store.add_document(doc_id, chunks_with_embeddings)
+    stored_count = await vector_store.add_document(doc_id, chunks_with_embeddings, user_id)
 
     return {
         "success": True,

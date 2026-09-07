@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.controllers.query_controller import ask_question
@@ -10,8 +10,8 @@ class QueryRequest(BaseModel):
     top_k: Optional[int] = 5
 
 @router.post("/ask")
-async def ask_route(request: QueryRequest):
+async def ask_route(request: QueryRequest, x_rag_user_id: str = Header(...)):
     """Ask a question about uploaded documents."""
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Question is required")
-    return await ask_question(request.question, request.top_k)
+    return await ask_question(request.question, request.top_k, x_rag_user_id)

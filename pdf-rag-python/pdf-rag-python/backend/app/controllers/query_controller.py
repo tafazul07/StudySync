@@ -2,12 +2,12 @@ from app.services.retrieval_service import retrieve_relevant_chunks, format_cont
 from app.services.ai_service import generate_answer
 from app.config import settings
 
-async def ask_question(question: str, top_k: int = None):
+async def ask_question(question: str, top_k: int = None, user_id: str = None):
     """Handle question answering."""
     top_k = top_k or settings.TOP_K
 
     # Retrieve relevant chunks
-    chunks = await retrieve_relevant_chunks(question, top_k)
+    chunks = await retrieve_relevant_chunks(question, top_k, user_id)
 
     if not chunks:
         return {

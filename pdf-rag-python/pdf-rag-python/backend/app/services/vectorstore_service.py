@@ -18,7 +18,7 @@ class VectorStore:
         # Using IndexFlatIP for cosine similarity with normalized vectors
         self.index = faiss.IndexFlatIP(self.dimension)
 
-    async def add_document(self, doc_id: str, chunks_with_embeddings: List[Dict]) -> int:
+    async def add_document(self, doc_id: str, chunks_with_embeddings: List[Dict], user_id: str) -> int:
         """Add document chunks to vector store."""
         if not chunks_with_embeddings:
             return 0
@@ -46,6 +46,7 @@ class VectorStore:
             self.documents.append({
                 "id": f"{doc_id}-{chunk['id']}",
                 "doc_id": doc_id,
+                "user_id": user_id,
                 "content": chunk["content"],
                 "metadata": {
                     "index": chunk["index"],
@@ -63,7 +64,7 @@ class VectorStore:
 
         return len(chunks_with_embeddings)
 
-    async def search(self, query_embedding: np.ndarray, top_k: int = 5) -> List[Dict]:
+    async def search(self, query_embedding: np.ndarray, top_k: int = 5, user_id: Optional[str] = None) -> List[Dict]:
         """Search for most similar chunks."""
         if self.index.ntotal == 0:
             return []
@@ -82,17 +83,23 @@ class VectorStore:
         query_embedding = query_embedding.reshape(1, -1)
 
         # Search
-        scores, indices = self.index.search(query_embedding, min(top_k, self.index.ntotal))
+        # Search the full in-memory index before filtering. Searching only top_k
+        # first could return another user's chunks and hide this user's matches.
+        scores, indices = self.index.search(query_embedding, self.index.ntotal)
 
         results = []
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or idx >= len(self.documents):
                 continue
             doc = self.documents[idx]
+            if doc is None or (user_id is not None and doc["user_id"] != user_id):
+                continue
             results.append({
                 **doc,
                 "score": float(score)  # IP score = cosine similarity for normalized vectors
             })
+            if len(results) >= top_k:
+                break
 
         return results
 

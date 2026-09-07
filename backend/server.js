@@ -194,7 +194,7 @@ wss.on('connection', (ws, req) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const PYTHON_RAG_PORT = process.env.PYTHON_RAG_PORT || 8000;
+const PYTHON_RAG_URL = process.env.PYTHON_RAG_URL || `http://localhost:${process.env.PYTHON_RAG_PORT || 8000}`;
 
 // === Security Middleware ===
 
@@ -334,29 +334,36 @@ function ragProxyError(err, req, res) {
   logger.warn('Python RAG backend unavailable', { error: err.message });
   if (!res.headersSent) {
     res.status(503).json({
-      error: 'PDF RAG service is not available. Please start the Python backend on port ' + PYTHON_RAG_PORT,
+      error: 'PDF RAG service is not available. Please start the Python backend at ' + PYTHON_RAG_URL,
       details: 'Run: cd pdf-rag-python && python main.py'
     });
   }
 }
 
+// The RAG service keeps its index in memory, so pass the authenticated user ID
+// to it and never trust a client-supplied value for that header.
+function attachRagUser(req, res, next) {
+  req.headers['x-rag-user-id'] = String(req.user.id);
+  next();
+}
+
 // Proxy to Python RAG backend
-app.use('/api/pdf', createProxyMiddleware({
-  target: `http://localhost:${PYTHON_RAG_PORT}`,
+app.use('/api/pdf', authenticate, attachRagUser, createProxyMiddleware({
+  target: PYTHON_RAG_URL,
   changeOrigin: true,
   pathRewrite: { '^/api/pdf': '/api/pdf' },
   on: { error: ragProxyError }
 }));
 
-app.use('/api/query', createProxyMiddleware({
-  target: `http://localhost:${PYTHON_RAG_PORT}`,
+app.use('/api/query', authenticate, attachRagUser, createProxyMiddleware({
+  target: PYTHON_RAG_URL,
   changeOrigin: true,
   pathRewrite: { '^/api/query': '/api/query' },
   on: { error: ragProxyError }
 }));
 
-app.use('/api/search', createProxyMiddleware({
-  target: `http://localhost:${PYTHON_RAG_PORT}`,
+app.use('/api/search', authenticate, attachRagUser, createProxyMiddleware({
+  target: PYTHON_RAG_URL,
   changeOrigin: true,
   pathRewrite: { '^/api/search': '/api/search' },
   on: { error: ragProxyError }

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Video, Plus, Users, Phone, X, Mic, MicOff, Camera, CameraOff, Monitor, Sparkles, Signal } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { io } from 'socket.io-client';
+import { Video, Plus, Users, Phone, PhoneOff, X, Mic, MicOff, Camera, CameraOff, Monitor, Sparkles, Signal, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../services/api';
 
 export default function WebRTC() {
@@ -10,10 +11,117 @@ export default function WebRTC() {
     name: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [activeRoom, setActiveRoom] = useState(null);
+  const [remoteStreams, setRemoteStreams] = useState({});
+  const [callError, setCallError] = useState('');
+  const localVideoRef = useRef(null);
+  const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const peersRef = useRef({});
 
   useEffect(() => {
     fetchRooms();
+    return () => leaveRoom();
   }, []);
+
+  const leaveRoom = () => {
+    Object.values(peersRef.current).forEach(peer => peer.close());
+    peersRef.current = {};
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+    localStreamRef.current = null;
+    setRemoteStreams({});
+    setActiveRoom(null);
+  };
+
+  const createPeer = (peerId, stream) => {
+    if (peersRef.current[peerId]) return peersRef.current[peerId];
+
+    const peer = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    stream.getTracks().forEach(track => peer.addTrack(track, stream));
+    peer.onicecandidate = ({ candidate }) => {
+      if (candidate) socketRef.current?.emit('ice-candidate', { target: peerId, candidate });
+    };
+    peer.ontrack = ({ streams }) => {
+      if (streams[0]) setRemoteStreams(previous => ({ ...previous, [peerId]: streams[0] }));
+    };
+    peer.onconnectionstatechange = () => {
+      if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
+        peer.close();
+        delete peersRef.current[peerId];
+        setRemoteStreams(previous => {
+          const next = { ...previous };
+          delete next[peerId];
+          return next;
+        });
+      }
+    };
+    peersRef.current[peerId] = peer;
+    return peer;
+  };
+
+  const handleJoinRoom = async (room) => {
+    setCallError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStreamRef.current = stream;
+      setActiveRoom(room);
+      setTimeout(() => {
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      }, 0);
+
+      const token = localStorage.getItem('accessToken');
+      const socket = io({ auth: { token } });
+      socketRef.current = socket;
+
+      socket.on('connect', () => socket.emit('join-room', room.id));
+      socket.on('existing-users', (users) => {
+        for (const peerId of users) {
+          // Existing peers initiate offers after receiving `user-joined`, which
+          // avoids both peers creating an offer at the same time.
+          createPeer(peerId, stream);
+        }
+      });
+      socket.on('user-joined', async (peerId) => {
+        const peer = createPeer(peerId, stream);
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.emit('offer', { target: peerId, offer });
+      });
+      socket.on('offer', async ({ sender, offer }) => {
+        const peer = createPeer(sender, stream);
+        await peer.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        socket.emit('answer', { target: sender, answer });
+      });
+      socket.on('answer', async ({ sender, answer }) => {
+        const peer = peersRef.current[sender];
+        if (peer) await peer.setRemoteDescription(new RTCSessionDescription(answer));
+      });
+      socket.on('ice-candidate', async ({ sender, candidate }) => {
+        const peer = peersRef.current[sender];
+        if (peer) await peer.addIceCandidate(new RTCIceCandidate(candidate));
+      });
+      socket.on('user-left', (peerId) => {
+        peersRef.current[peerId]?.close();
+        delete peersRef.current[peerId];
+        setRemoteStreams(previous => {
+          const next = { ...previous };
+          delete next[peerId];
+          return next;
+        });
+      });
+      socket.on('connect_error', () => setCallError('Unable to connect to the room. Please try again.'));
+    } catch (error) {
+      console.error('Unable to join room:', error);
+      setCallError('Camera and microphone access is required to join a room.');
+      leaveRoom();
+    }
+  };
 
   const fetchRooms = async () => {
     try {
@@ -61,6 +169,40 @@ export default function WebRTC() {
           <div className="spinner relative" />
         </div>
         <span className="text-gray-500 dark:text-gray-400 font-medium animate-pulse">Connecting to video servers...</span>
+      </div>
+    );
+  }
+
+  if (activeRoom) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold gradient-text">{activeRoom.name}</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">You are connected to this study room.</p>
+          </div>
+          <button onClick={leaveRoom} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors font-semibold">
+            <PhoneOff className="w-4 h-4" /> Leave Room
+          </button>
+        </div>
+
+        {callError && <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400"><AlertCircle className="w-5 h-5" />{callError}</div>}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-900 shadow-xl">
+            <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+            <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 text-xs font-medium text-white">You</span>
+          </div>
+          {Object.entries(remoteStreams).map(([peerId, stream]) => (
+            <RemoteVideo key={peerId} stream={stream} />
+          ))}
+          {Object.keys(remoteStreams).length === 0 && (
+            <div className="aspect-video rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center text-gray-500 dark:text-gray-400">
+              <Users className="w-10 h-10 mb-3" />
+              <p className="font-medium">Waiting for others to join</p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -129,7 +271,7 @@ export default function WebRTC() {
                       </div>
                     </div>
                   </div>
-                  <button className="btn-secondary w-full mt-4 flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all group-hover:scale-105">
+                  <button onClick={() => handleJoinRoom(room)} className="btn-secondary w-full mt-4 flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all group-hover:scale-105">
                     <Phone className="w-4 h-4" />
                     Join Room
                   </button>
@@ -246,4 +388,13 @@ export default function WebRTC() {
       )}
     </div>
   );
+}
+
+function RemoteVideo({ stream }) {
+  const videoRef = useRef(null);
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = stream;
+  }, [stream]);
+
+  return <video ref={videoRef} autoPlay playsInline className="w-full aspect-video object-cover rounded-2xl bg-slate-900 shadow-xl" />;
 }

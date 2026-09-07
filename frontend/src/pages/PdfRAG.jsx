@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Upload, MessageSquare, Sparkles, Loader2, Send, FileText, CheckCircle, AlertCircle, Bot, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiFetch } from '../services/api';

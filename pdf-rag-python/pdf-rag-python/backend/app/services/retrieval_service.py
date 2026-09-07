@@ -4,12 +4,12 @@ from app.services.embedding_service import generate_embedding
 from app.services.vectorstore_service import vector_store
 from app.config import settings
 
-async def retrieve_relevant_chunks(query: str, top_k: int = None) -> List[Dict]:
+async def retrieve_relevant_chunks(query: str, top_k: int = None, user_id: str = None) -> List[Dict]:
     """Retrieve top-k most relevant chunks for a query."""
     top_k = top_k or settings.TOP_K
 
     query_embedding = await generate_embedding(query)
-    results = await vector_store.search(query_embedding, top_k)
+    results = await vector_store.search(query_embedding, top_k, user_id)
 
     return [
         {
